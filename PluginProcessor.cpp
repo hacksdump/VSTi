@@ -7,27 +7,78 @@ SineSynthAudioProcessor::~SineSynthAudioProcessor() {}
 void SineSynthAudioProcessor::prepareToPlay (double sampleRate, int)
 {
     currentSampleRate = sampleRate;
-    phase = 0.0;
-    phaseIncrement = juce::MathConstants<double>::twoPi * frequency / currentSampleRate;
+    for (auto& v : voices)
+        v = Voice{};
 }
 
-void SineSynthAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void SineSynthAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     buffer.clear();
 
     int numSamples = buffer.getNumSamples();
     int numChannels = buffer.getNumChannels();
+    int samplePos = 0;
 
-    for (int sample = 0; sample < numSamples; ++sample)
+    for (const auto metadata : midiMessages)
     {
-        float value = std::sin(phase);
+        auto msg = metadata.getMessage();
+        int msgPos = metadata.samplePosition;
 
-        phase += phaseIncrement;
-        if (phase >= juce::MathConstants<double>::twoPi)
-            phase -= juce::MathConstants<double>::twoPi;
+        // Render audio up to this MIDI event
+        for (; samplePos < msgPos; ++samplePos)
+        {
+            float sample = 0.0f;
+            for (auto& v : voices)
+            {
+                if (!v.active) continue;
+                sample += std::sin(v.phase) * v.velocity * 0.2f;
+                v.phase += v.phaseIncrement;
+                if (v.phase >= juce::MathConstants<double>::twoPi)
+                    v.phase -= juce::MathConstants<double>::twoPi;
+            }
+            for (int ch = 0; ch < numChannels; ++ch)
+                buffer.setSample(ch, samplePos, sample);
+        }
 
+        if (msg.isNoteOn())
+        {
+            // Find a free voice (or steal the first one)
+            Voice* voice = nullptr;
+            for (auto& v : voices)
+                if (!v.active) { voice = &v; break; }
+            if (!voice)
+                voice = &voices[0];
+
+            voice->noteNumber = msg.getNoteNumber();
+            voice->velocity = msg.getFloatVelocity();
+            voice->phase = 0.0;
+            voice->phaseIncrement = juce::MathConstants<double>::twoPi
+                * juce::MidiMessage::getMidiNoteInHertz(msg.getNoteNumber())
+                / currentSampleRate;
+            voice->active = true;
+        }
+        else if (msg.isNoteOff())
+        {
+            for (auto& v : voices)
+                if (v.active && v.noteNumber == msg.getNoteNumber())
+                    v.active = false;
+        }
+    }
+
+    // Render remaining samples after last MIDI event
+    for (; samplePos < numSamples; ++samplePos)
+    {
+        float sample = 0.0f;
+        for (auto& v : voices)
+        {
+            if (!v.active) continue;
+            sample += std::sin(v.phase) * v.velocity * 0.2f;
+            v.phase += v.phaseIncrement;
+            if (v.phase >= juce::MathConstants<double>::twoPi)
+                v.phase -= juce::MathConstants<double>::twoPi;
+        }
         for (int ch = 0; ch < numChannels; ++ch)
-            buffer.setSample(ch, sample, value * 0.2f);
+            buffer.setSample(ch, samplePos, sample);
     }
 }
 

@@ -32,10 +32,18 @@ public:
     void setStateInformation (const void*, int) override {}
 
 private:
+    struct Voice
+    {
+        int noteNumber = -1;
+        double phase = 0.0;
+        double phaseIncrement = 0.0;
+        float velocity = 0.0f;
+        bool active = false;
+    };
+
+    static constexpr int maxVoices = 16;
+    Voice voices[maxVoices];
     double currentSampleRate = 44100.0;
-    double phase = 0.0;
-    double phaseIncrement = 0.0;
-    float frequency = 440.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SineSynthAudioProcessor)
 };
