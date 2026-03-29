@@ -31,7 +31,13 @@ public:
     void getStateInformation (juce::MemoryBlock&) override {}
     void setStateInformation (const void*, int) override {}
 
+    juce::AudioProcessorValueTreeState apvts;
+
 private:
+    static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+
+    enum class EnvStage { Off, Attack, Decay, Sustain, Release };
+
     struct Voice
     {
         int noteNumber = -1;
@@ -40,14 +46,18 @@ private:
         float velocity = 0.0f;
         float gain = 0.0f;
         float gainStep = 0.0f;
+        float targetGain = 0.0f;
+        EnvStage stage = EnvStage::Off;
         bool active = false;
-        bool releasing = false;
     };
 
+    void advanceEnvelope (Voice& v, float attackSamples, float decaySamples,
+                          float sustainLevel, float releaseSamples);
+
     static constexpr int maxVoices = 16;
+    static constexpr float minEnvTimeSec = 0.01f; // 10ms floor
     Voice voices[maxVoices];
     double currentSampleRate = 44100.0;
-    float releaseTimeSamples = 441.0f; // ~10ms at 44100
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SineSynthAudioProcessor)
 };
