@@ -38,12 +38,16 @@ private:
         double phase = 0.0;
         double phaseIncrement = 0.0;
         float velocity = 0.0f;
+        float gain = 0.0f;
+        float gainStep = 0.0f;
         bool active = false;
+        bool releasing = false;
     };
 
     static constexpr int maxVoices = 16;
     Voice voices[maxVoices];
     double currentSampleRate = 44100.0;
+    float releaseTimeSamples = 441.0f; // ~10ms at 44100
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SineSynthAudioProcessor)
 };

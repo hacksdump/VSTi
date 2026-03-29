@@ -7,6 +7,7 @@ SineSynthAudioProcessor::~SineSynthAudioProcessor() {}
 void SineSynthAudioProcessor::prepareToPlay (double sampleRate, int)
 {
     currentSampleRate = sampleRate;
+    releaseTimeSamples = static_cast<float>(sampleRate * 0.01); // 10ms release
     for (auto& v : voices)
         v = Voice{};
 }
@@ -31,10 +32,22 @@ void SineSynthAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
             for (auto& v : voices)
             {
                 if (!v.active) continue;
-                sample += std::sin(v.phase) * v.velocity * 0.2f;
+                sample += std::sin(v.phase) * v.gain * 0.2f;
                 v.phase += v.phaseIncrement;
                 if (v.phase >= juce::MathConstants<double>::twoPi)
                     v.phase -= juce::MathConstants<double>::twoPi;
+                v.gain += v.gainStep;
+                if (v.releasing && v.gain <= 0.0f)
+                {
+                    v.gain = 0.0f;
+                    v.active = false;
+                    v.releasing = false;
+                }
+                else if (!v.releasing && v.gain >= v.velocity)
+                {
+                    v.gain = v.velocity;
+                    v.gainStep = 0.0f;
+                }
             }
             for (int ch = 0; ch < numChannels; ++ch)
                 buffer.setSample(ch, samplePos, sample);
@@ -55,13 +68,19 @@ void SineSynthAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
             voice->phaseIncrement = juce::MathConstants<double>::twoPi
                 * juce::MidiMessage::getMidiNoteInHertz(msg.getNoteNumber())
                 / currentSampleRate;
+            voice->gain = 0.0f;
+            voice->gainStep = voice->velocity / releaseTimeSamples; // ~10ms attack
             voice->active = true;
+            voice->releasing = false;
         }
         else if (msg.isNoteOff())
         {
             for (auto& v : voices)
                 if (v.active && v.noteNumber == msg.getNoteNumber())
-                    v.active = false;
+                {
+                    v.releasing = true;
+                    v.gainStep = -v.gain / releaseTimeSamples; // ~10ms release
+                }
         }
     }
 
@@ -72,10 +91,22 @@ void SineSynthAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         for (auto& v : voices)
         {
             if (!v.active) continue;
-            sample += std::sin(v.phase) * v.velocity * 0.2f;
+            sample += std::sin(v.phase) * v.gain * 0.2f;
             v.phase += v.phaseIncrement;
             if (v.phase >= juce::MathConstants<double>::twoPi)
                 v.phase -= juce::MathConstants<double>::twoPi;
+            v.gain += v.gainStep;
+            if (v.releasing && v.gain <= 0.0f)
+            {
+                v.gain = 0.0f;
+                v.active = false;
+                v.releasing = false;
+            }
+            else if (!v.releasing && v.gain >= v.velocity)
+            {
+                v.gain = v.velocity;
+                v.gainStep = 0.0f;
+            }
         }
         for (int ch = 0; ch < numChannels; ++ch)
             buffer.setSample(ch, samplePos, sample);
